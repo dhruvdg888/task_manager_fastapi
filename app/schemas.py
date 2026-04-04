@@ -49,3 +49,11 @@ class Task(TaskBase):
 
      # to display our ORM response
     model_config = ConfigDict(from_attributes=True)
+
+# analytics response
+class TaskAnalytics(BaseModel):
+    total_tasks: int
+    pending_tasks: int
+    completed_tasks: int
+    priority_counts: dict
+    overdue_tasks: int

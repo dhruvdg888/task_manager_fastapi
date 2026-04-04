@@ -1,10 +1,12 @@
 from fastapi import APIRouter, HTTPException, status, Response
 from typing import List
-from fastapi.params import Depends
+from fastapi.params import Depends, Query
+from sqlalchemy import or_
 from .. import models
 from ..database import get_db
 from sqlalchemy.orm import Session
 from .. import schemas, models, oauth2
+from datetime import datetime, timezone
 
 
 router = APIRouter(prefix='/tasks', tags=['Tasks'])
@@ -22,11 +24,54 @@ async def create_task(task: schemas.TaskCreate,db:Session = Depends(get_db), cur
     return new_task
 
 # Get all tasks for the current user 
+# applied filters
 @router.get("/", response_model=List[schemas.Task])
-async def get_all_tasks(db: Session = Depends(get_db),current_user = Depends(oauth2.get_current_user)):
-    tasks = db.query(models.Task).filter(models.Task.owner_id == int(current_user.id)).all()
+async def get_all_tasks(status:str = Query(None),priority:str = Query(None), search:str = Query(None),db: Session = Depends(get_db),current_user = Depends(oauth2.get_current_user)):
+    tasks_query = db.query(models.Task).filter(models.Task.owner_id == int(current_user.id))
 
-    return tasks
+    if status:
+        tasks_query = tasks_query.filter(models.Task.status == status)
+    
+    if priority:
+        tasks_query = tasks_query.filter(models.Task.priority == priority)
+    
+    if search:
+     tasks_query = tasks_query.filter(
+        or_(
+            models.Task.title.ilike(f"%{search}%"),
+            models.Task.description.ilike(f"%{search}%")
+        )
+     )
+
+    return tasks_query.all()
+
+# Get the analytics of overall tasks
+@router.get("/analytics", response_model=schemas.TaskAnalytics)
+async def get_analysis(db:Session = Depends(get_db), current_user = Depends(oauth2.get_current_user)):
+    # Fetch all tasks once (1 query instead of 7)
+    tasks = db.query(models.Task).filter(models.Task.owner_id == current_user.id).all()
+
+    now = datetime.now(timezone.utc)
+    
+    total_tasks_count = len(tasks)
+    completed_tasks_count = sum(1 for t in tasks if t.status == 'completed')
+    pending_tasks_count = sum(1 for t in tasks if t.status == 'pending')
+    high_priority_count = sum(1 for t in tasks if t.priority == 'high')
+    medium_priority_count = sum(1 for t in tasks if t.priority == 'medium')
+    low_priority_count = sum(1 for t in tasks if t.priority == 'low')
+    over_due_tasks_count = sum(1 for t in tasks if t.due_date < now and t.status != 'completed')
+
+    return {
+        "total_tasks": total_tasks_count,
+        "completed_tasks": completed_tasks_count,
+        "pending_tasks": pending_tasks_count,
+        "priority_counts": {
+            "high": high_priority_count,
+            "medium": medium_priority_count,
+            "low": low_priority_count
+        },
+        "overdue_tasks": over_due_tasks_count
+    }
 
 # Get single task based on task id
 @router.get("/{id}", response_model=schemas.Task)
