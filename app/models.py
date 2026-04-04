@@ -1,6 +1,7 @@
 from sqlalchemy import Column, ForeignKey, Integer, String
 from sqlalchemy.sql.sqltypes import TIMESTAMP
 from sqlalchemy.sql.expression import text
+from sqlalchemy.orm import relationship
 
 from .database import Base
 
@@ -22,5 +23,7 @@ class Task(Base):
     priority = Column(String,server_default=text("'low'"))
     status = Column(String,server_default=text("'pending'"))
     due_date = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text("now() + interval '7 days'"))
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
+    owner = relationship("User")
     
